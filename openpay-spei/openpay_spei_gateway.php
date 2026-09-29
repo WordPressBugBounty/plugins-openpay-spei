@@ -31,7 +31,8 @@ class Openpay_Spei extends WC_Payment_Gateway
     protected $images_dir;
 
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->id = 'openpay_spei';
         $this->method_title = __('Openpay SPEI', 'openpay_spei');
         $this->has_fields = true;
@@ -53,68 +54,71 @@ class Openpay_Spei extends WC_Payment_Gateway
         $this->private_key = $this->is_sandbox ? $this->test_private_key : $this->live_private_key;
         $this->pdf_url_base = $this->is_sandbox ? 'https://sandbox-dashboard.openpay.mx/spei-pdf' : 'https://dashboard.openpay.mx/spei-pdf';
         // tell WooCommerce to save options
-        add_action('woocommerce_update_options_payment_gateways_'.$this->id, array($this, 'process_admin_options'));
-        add_action('woocommerce_api_'.strtolower(get_class($this)), array($this, 'webhook_handler'));
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+        add_action('woocommerce_api_' . strtolower(get_class($this)), array($this, 'webhook_handler'));
 
         if (!$this->validateCurrency()) {
             $this->enabled = false;
         }
     }
 
-    public function process_admin_options() {
+    public function process_admin_options()
+    {
         $post_data = $this->get_post_data();
-        $mode = 'live';    
-        
-        if($post_data['woocommerce_'.$this->id.'_sandbox'] == '1'){
-            $mode = 'test';            
+        $mode = 'live';
+
+        if ($post_data['woocommerce_' . $this->id . '_sandbox'] == '1') {
+            $mode = 'test';
         }
-        
-        $this->merchant_id = $post_data['woocommerce_'.$this->id.'_'.$mode.'_merchant_id'];
-        $this->private_key = $post_data['woocommerce_'.$this->id.'_'.$mode.'_private_key'];
-        
+
+        $this->merchant_id = $post_data['woocommerce_' . $this->id . '_' . $mode . '_merchant_id'];
+        $this->private_key = $post_data['woocommerce_' . $this->id . '_' . $mode . '_private_key'];
+
         $env = ($mode == 'live') ? 'Producton' : 'Sandbox';
-        
-        if($this->merchant_id == '' || $this->private_key == ''){
+
+        if ($this->merchant_id == '' || $this->private_key == '') {
             $settings = new WC_Admin_Settings();
-            $settings->add_error('You need to enter "'.$env.'" credentials if you want to use this plugin in this mode.');
+            $settings->add_error('You need to enter "' . $env . '" credentials if you want to use this plugin in this mode.');
         } else {
             $this->createWebhook();
-        } 
-        
-        return parent::process_admin_options();        
-    }    
+        }
 
-    public function webhook_handler() {
-        header('HTTP/1.1 200 OK');        
+        return parent::process_admin_options();
+    }
+
+    public function webhook_handler()
+    {
+        header('HTTP/1.1 200 OK');
         $obj = file_get_contents('php://input');
         $json = json_decode($obj);
 
-        if($json->transaction->method == 'bank_account'){
+        if ($json->transaction->method == 'bank_account') {
             $openpay = Openpay::getInstance($this->merchant_id, $this->private_key);
             Openpay::setProductionMode($this->is_sandbox ? false : true);
 
-            if(isset($json->transaction->customer_id)){
+            if (isset($json->transaction->customer_id)) {
                 $customer = $openpay->customers->get($json->transaction->customer_id);
                 $charge = $customer->charges->get($json->transaction->id);
-            }else{
+            } else {
                 $charge = $openpay->charges->get($json->transaction->id);
             }
 
             $order_id = $json->transaction->order_id;
             $order = new WC_Order($order_id);
 
-            if ($json->type == 'charge.succeeded' && $charge->status == 'completed') {            
+            if ($json->type == 'charge.succeeded' && $charge->status == 'completed') {
                 $payment_date = date("Y-m-d", strtotime($json->event_date));
                 $order->update_meta_data('openpay_payment_date', $payment_date);
                 $order->payment_complete();
-                $order->add_order_note(sprintf("Payment completed.")); 
-            }else if($json->type == 'transaction.expired' && $charge->status == 'cancelled'){
+                $order->add_order_note(sprintf("Payment completed."));
+            } else if ($json->type == 'transaction.expired' && $charge->status == 'cancelled') {
                 $order->update_status('cancelled', 'Payment is due.');
             }
         }
     }
 
-    public function init_form_fields() {
+    public function init_form_fields()
+    {
         $this->form_fields = array(
             'enabled' => array(
                 'type' => 'checkbox',
@@ -125,7 +129,7 @@ class Openpay_Spei extends WC_Payment_Gateway
             'sandbox' => array(
                 'type' => 'checkbox',
                 'title' => __('Modo de pruebas', 'woothemes'),
-                'label' => __('Habilitar', 'woothemes'),                
+                'label' => __('Habilitar', 'woothemes'),
                 'default' => 'no'
             ),
             'test_merchant_id' => array(
@@ -151,7 +155,7 @@ class Openpay_Spei extends WC_Payment_Gateway
                 'title' => __('Llave secreta de producción', 'woothemes'),
                 'description' => __('Obten tus llaves de producción de tu cuenta de Openpay ("sk_").', 'woothemes'),
                 'default' => __('', 'woothemes')
-            ),      
+            ),
             'deadline' => array(
                 'type' => 'number',
                 'required' => true,
@@ -162,21 +166,26 @@ class Openpay_Spei extends WC_Payment_Gateway
         );
     }
 
-    public function admin_options() {
+    public function admin_options()
+    {
         include_once('templates/admin.php');
     }
 
-    public function payment_fields() {
-        $this->images_dir = plugin_dir_url( __FILE__ ).'/assets/images/';
+    public function payment_fields()
+    {
+        $this->images_dir = plugin_dir_url(__FILE__) . '/assets/images/';
         include_once('templates/payment.php');
     }
 
-    protected function processOpenpayCharge() {
-                
-        date_default_timezone_set('America/Mexico_City');
-        $due_date = date('Y-m-d\TH:i:s', strtotime('+ '.$this->deadline.' hours'));
+    protected function processOpenpayCharge()
+    {
+
+        $timezone = new DateTimeZone('America/Mexico_City');
+        $dueDate = new DateTime('now', $timezone);
+        $dueDate->modify('+ ' . absint($this->deadline) . ' hours');
+        $due_date = $dueDate->format('Y-m-d\TH:i:s');
         $amount = number_format((float) $this->order->get_total(), 2, '.', '');
-        
+
         $charge_request = array(
             "method" => "bank_account",
             "amount" => $amount,
@@ -192,12 +201,12 @@ class Openpay_Spei extends WC_Payment_Gateway
 
         if ($result_json != false) {
             $this->transaction_id = $result_json->id;
-            $pdf_url = $this->pdf_url_base.'/'.$this->merchant_id.'/'.$result_json->id;
+            $pdf_url = $this->pdf_url_base . '/' . $this->merchant_id . '/' . $result_json->id;
             //WC()->session->set('pdf_url', $pdf_url);
             //Save data for the ORDER
-            if($this->is_sandbox){
+            if ($this->is_sandbox) {
                 $this->order->update_meta_data('_openpay_customer_sandbox_id', $openpay_customer->id);
-            }else{
+            } else {
                 $this->order->update_meta_data('_openpay_customer_id', $openpay_customer->id);
             }
             $this->order->update_meta_data('_transaction_id', $result_json->id);
@@ -208,7 +217,8 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function process_payment($order_id) {
+    public function process_payment($order_id)
+    {
         global $woocommerce;
 
         $this->order = new WC_Order($order_id);
@@ -232,7 +242,8 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function createOpenpayCharge($customer, $charge_request) {
+    public function createOpenpayCharge($customer, $charge_request)
+    {
         Openpay::getInstance($this->merchant_id, $this->private_key);
         Openpay::setProductionMode($this->is_sandbox ? false : true);
 
@@ -248,12 +259,13 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function getOpenpayCustomer() {
+    public function getOpenpayCustomer()
+    {
         $customer_id = null;
         if (is_user_logged_in()) {
-            if($this->is_sandbox){
+            if ($this->is_sandbox) {
                 $customer_id = get_user_meta(get_current_user_id(), '_openpay_customer_sandbox_id', true);
-            }else{
+            } else {
                 $customer_id = get_user_meta(get_current_user_id(), '_openpay_customer_id', true);
             }
         }
@@ -272,7 +284,8 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function createOpenpayCustomer() {
+    public function createOpenpayCustomer()
+    {
         $customerData = array(
             'name' => $this->order->get_billing_first_name(),
             'last_name' => $this->order->get_billing_last_name(),
@@ -302,9 +315,9 @@ class Openpay_Spei extends WC_Payment_Gateway
             $customer = $openpay->customers->add($customerData);
 
             if (is_user_logged_in()) {
-                if($this->is_sandbox){
+                if ($this->is_sandbox) {
                     update_user_meta(get_current_user_id(), '_openpay_customer_sandbox_id', $customer->id);
-                }else{
+                } else {
                     update_user_meta(get_current_user_id(), '_openpay_customer_id', $customer->id);
                 }
             }
@@ -316,10 +329,11 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function createWebhook($force_host_ssl = false) {
+    public function createWebhook($force_host_ssl = false)
+    {
 
         $protocol = (get_option('woocommerce_force_ssl_checkout') == 'no') ? 'http' : 'https';
-        $url = site_url('/', $protocol).'wc-api/Openpay_Spei';          
+        $url = site_url('/', $protocol) . 'wc-api/Openpay_Spei';
 
         $webhook_data = array(
             'url' => $url,
@@ -340,14 +354,14 @@ class Openpay_Spei extends WC_Payment_Gateway
                 'transaction.expired'
             )
         );
-                       
+
 
         $openpay = Openpay::getInstance($this->merchant_id, $this->private_key);
         Openpay::setProductionMode($this->is_sandbox ? false : true);
 
         $userAgent = "Openpay-WOOCMX/v2";
         Openpay::setUserAgent($userAgent);
-        
+
         try {
             $webhook = $openpay->webhooks->add($webhook_data);
             if (is_user_logged_in()) {
@@ -361,7 +375,8 @@ class Openpay_Spei extends WC_Payment_Gateway
         }
     }
 
-    public function error($e) {
+    public function error($e)
+    {
 
         switch ($e->getErrorCode()) {
             /* ERRORES GENERALES */
@@ -369,13 +384,13 @@ class Openpay_Spei extends WC_Payment_Gateway
             case '1004':
             case '1005':
                 $msg = 'Servicio no disponible.';
-                break;            
+                break;
             default: /* Demás errores 400 */
                 $msg = 'La petición no pudo ser procesada.';
                 break;
         }
-        
-        $error = $e->getErrorCode().'. '.$msg;
+
+        $error = $e->getErrorCode() . '. ' . $msg;
 
         if (function_exists('wc_add_notice')) {
             wc_add_notice($error, 'error');
@@ -384,36 +399,37 @@ class Openpay_Spei extends WC_Payment_Gateway
             $settings->add_error($error);
         }
     }
-    
-    
-    public function errorWebhook($e, $force_host_ssl, $url) {
 
-        switch ($e->getErrorCode()) {     
+
+    public function errorWebhook($e, $force_host_ssl, $url)
+    {
+
+        switch ($e->getErrorCode()) {
             case '1003':
                 $msg = 'Puerto inválido, puertos válidos: 443, 8443 y 10443';
-                break;      
+                break;
             case '6001':
                 $msg = 'El webhook ya existe, omite este mensaje.';
                 return;
             case '6002':
-            case '6003';    
-                $msg = 'No es posible conectarse con el servicio de webhook, verifica la URL: '.$url;
-                if($force_host_ssl == true){
+            case '6003';
+                $msg = 'No es posible conectarse con el servicio de webhook, verifica la URL: ' . $url;
+                if ($force_host_ssl == true) {
                     $this->createWebhook(true);
-                }                                
+                }
                 break;
             default: /* Demás errores 400 */
                 $msg = 'La petición no pudo ser procesada.';
                 break;
         }
-        
-        $error = $e->getErrorCode().'. '.$msg;
-        
+
+        $error = $e->getErrorCode() . '. ' . $msg;
+
         /**
          * Para solo mostrar un mensaje de error en backoffice y no 2, 
          * esto debido a que se vuelve a realizar la petición "createWebhook" con el parámetro "force_host_ssl"         
-         **/         
-        if(!$force_host_ssl){
+         **/
+        if (!$force_host_ssl) {
             return;
         }
 
@@ -431,22 +447,26 @@ class Openpay_Spei extends WC_Payment_Gateway
      * @access public
      * @return bool
      */
-    public function validateCurrency() {
+    public function validateCurrency()
+    {
         return in_array(get_woocommerce_currency(), $this->currencies);
     }
 
-    public function isNullOrEmptyString($string) {
+    public function isNullOrEmptyString($string)
+    {
         return (!isset($string) || trim($string) === '');
     }
 
 }
 
-function openpay_spei_add_creditcard_gateway($methods) {
+function openpay_spei_add_creditcard_gateway($methods)
+{
     array_push($methods, 'openpay_spei');
     return $methods;
 }
 
-function openpay_spei_template($template, $template_name, $template_path) {
+function openpay_spei_template($template, $template_name, $template_path)
+{
     global $woocommerce;
 
     //$mid = $this->merchant_id;
@@ -456,18 +476,18 @@ function openpay_spei_template($template, $template_name, $template_path) {
         $template_path = $woocommerce->template_url;
     }
 
-    $plugin_path = untrailingslashit(plugin_dir_path(__FILE__)).'/templates/woocommerce/';
+    $plugin_path = untrailingslashit(plugin_dir_path(__FILE__)) . '/templates/woocommerce/';
 
     // Look within passed path within the theme - this is priority
     $template = locate_template(
-            array(
-                $template_path.$template_name,
-                $template_name
-            )
+        array(
+            $template_path . $template_name,
+            $template_name
+        )
     );
 
-    if (!$template && file_exists($plugin_path.$template_name))
-        $template = $plugin_path.$template_name;
+    if (!$template && file_exists($plugin_path . $template_name))
+        $template = $plugin_path . $template_name;
 
     if (!$template)
         $template = $_template;
